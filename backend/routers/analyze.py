@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from models.schemas import AnalyzeRequest
-from services.claude_service import stream_vulnerability_analysis
+from services.semgrep_service import stream_vulnerability_analysis
 
 router = APIRouter()
 

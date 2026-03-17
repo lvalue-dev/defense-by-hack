@@ -1,0 +1,329 @@
+rules:
+  # ─── SQL Injection ───────────────────────────────────────────────
+  - id: sql-injection-string-concat
+    patterns:
+      - pattern-either:
+          - pattern: $QUERY = "..." + $INPUT
+          - pattern: $QUERY = '...' + $INPUT
+          - pattern: $QUERY = f"... {$INPUT} ..."
+          - pattern: $QUERY = f'... {$INPUT} ...'
+          - pattern: $QUERY = "...%s..." % $INPUT
+          - pattern: cursor.execute("..." + $INPUT)
+          - pattern: cursor.execute("...%s..." % $INPUT)
+          - pattern: cursor.execute(f"...{$INPUT}...")
+    message: >
+      Potential SQL injection: user input concatenated into SQL query.
+      Use parameterized queries (cursor.execute(query, (param,))) instead.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-89: Improper Neutralization of Special Elements in SQL Command"]
+      category: security
+
+  - id: sql-injection-js-concat
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query("..." + $INPUT)
+          - pattern: $DB.query(`...${$INPUT}...`)
+          - pattern: $POOL.query("..." + $INPUT)
+          - pattern: $POOL.query(`...${$INPUT}...`)
+    message: >
+      Potential SQL injection: user input concatenated into SQL query.
+      Use parameterized queries with placeholders (?, $1) instead.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-89: Improper Neutralization of Special Elements in SQL Command"]
+      category: security
+
+  # ─── Command Injection ───────────────────────────────────────────
+  - id: os-system-injection
+    pattern-either:
+      - pattern: os.system($CMD + ...)
+      - pattern: os.system(f"...{$INPUT}...")
+      - pattern: os.system("..." + $INPUT)
+      - pattern: os.popen($CMD + ...)
+      - pattern: os.popen(f"...{$INPUT}...")
+    message: >
+      Potential command injection: user input passed to os.system()/os.popen().
+      Use subprocess with a list of arguments and shell=False.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-78: Improper Neutralization of Special Elements in OS Command"]
+      category: security
+
+  - id: subprocess-shell-true
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+      - pattern-not: subprocess.$FUNC([...], shell=True, ...)
+    message: >
+      subprocess called with shell=True and a string argument.
+      If the command includes user input, this allows command injection.
+      Pass arguments as a list and use shell=False.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-78: Improper Neutralization of Special Elements in OS Command"]
+      category: security
+
+  - id: exec-command-js
+    pattern-either:
+      - pattern: exec($CMD + $INPUT)
+      - pattern: execSync($CMD + $INPUT)
+      - pattern: child_process.exec($CMD + $INPUT)
+      - pattern: child_process.exec(`...${$INPUT}...`)
+    message: >
+      Potential command injection: user input passed to exec()/execSync().
+      Use execFile() with an arguments array instead.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-78: Improper Neutralization of Special Elements in OS Command"]
+      category: security
+
+  # ─── Path Traversal ──────────────────────────────────────────────
+  - id: path-traversal-open
+    pattern-either:
+      - pattern: open($BASE + $INPUT)
+      - pattern: open(os.path.join($BASE, $INPUT))
+      - pattern: open(f"...{$INPUT}...")
+    message: >
+      Potential path traversal: user input used in file path without validation.
+      Resolve the canonical path with os.path.realpath() and verify it starts
+      within the intended base directory.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A01:2021 - Broken Access Control"]
+      cwe: ["CWE-22: Improper Limitation of a Pathname to a Restricted Directory"]
+      category: security
+
+  # ─── Hardcoded Secrets ───────────────────────────────────────────
+  - id: hardcoded-password-assignment
+    pattern-either:
+      - pattern: PASSWORD = "..."
+      - pattern: password = "..."
+      - pattern: passwd = "..."
+      - pattern: SECRET = "..."
+      - pattern: SECRET_KEY = "..."
+      - pattern: API_KEY = "..."
+      - pattern: APIKEY = "..."
+      - pattern: DB_PASSWORD = "..."
+    message: >
+      Hardcoded secret detected. Store secrets in environment variables
+      or a secrets manager, not in source code.
+    severity: WARNING
+    languages: [python, javascript, typescript]
+    metadata:
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      cwe: ["CWE-798: Use of Hard-coded Credentials"]
+      category: security
+
+  - id: hardcoded-token-assignment
+    pattern-either:
+      - pattern: token = "..."
+      - pattern: TOKEN = "..."
+      - pattern: ACCESS_TOKEN = "..."
+      - pattern: auth_token = "..."
+    message: >
+      Hardcoded token detected. Use environment variables or a secrets manager.
+    severity: WARNING
+    languages: [python, javascript, typescript]
+    metadata:
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      cwe: ["CWE-798: Use of Hard-coded Credentials"]
+      category: security
+
+  # ─── Weak Cryptography ───────────────────────────────────────────
+  - id: md5-usage
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: MD5.new(...)
+      - pattern: Crypto.Hash.MD5.new(...)
+    message: >
+      MD5 is cryptographically broken. Use SHA-256 or SHA-3 for integrity checks.
+      For passwords, use bcrypt, argon2id, or scrypt.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      cwe: ["CWE-327: Use of a Broken or Risky Cryptographic Algorithm"]
+      category: security
+
+  - id: sha1-usage
+    pattern-either:
+      - pattern: hashlib.sha1(...)
+      - pattern: SHA1.new(...)
+    message: >
+      SHA-1 is cryptographically weak. Use SHA-256 or SHA-3 instead.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      cwe: ["CWE-327: Use of a Broken or Risky Cryptographic Algorithm"]
+      category: security
+
+  - id: md5-js
+    pattern-either:
+      - pattern: crypto.createHash('md5')
+      - pattern: crypto.createHash("md5")
+    message: >
+      MD5 is cryptographically broken. Use SHA-256: crypto.createHash('sha256').
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      cwe: ["CWE-327: Use of a Broken or Risky Cryptographic Algorithm"]
+      category: security
+
+  # ─── Insecure Deserialization ────────────────────────────────────
+  - id: pickle-loads
+    pattern-either:
+      - pattern: pickle.loads($DATA)
+      - pattern: pickle.load($FILE)
+      - pattern: cPickle.loads($DATA)
+    message: >
+      pickle.loads() on untrusted data allows arbitrary code execution.
+      Use JSON (json.loads) or a schema-validated format instead.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      category: security
+
+  - id: yaml-load-unsafe
+    pattern: yaml.load($DATA, ...)
+    pattern-not: yaml.load($DATA, Loader=yaml.SafeLoader)
+    message: >
+      yaml.load() with untrusted data allows arbitrary code execution.
+      Use yaml.safe_load() instead.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      category: security
+
+  # ─── Code Injection (eval) ───────────────────────────────────────
+  - id: eval-user-input
+    pattern-either:
+      - pattern: eval($INPUT)
+      - pattern: exec($INPUT)
+    message: >
+      eval()/exec() with user-controlled input allows arbitrary code execution.
+      Use ast.literal_eval() for safe expression parsing, or define an
+      allowlist of permitted operations.
+    severity: ERROR
+    languages: [python, javascript, typescript]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-94: Improper Control of Generation of Code"]
+      category: security
+
+  # ─── XSS ─────────────────────────────────────────────────────────
+  - id: innerhtml-assignment
+    pattern-either:
+      - pattern: $EL.innerHTML = $INPUT
+      - pattern: document.write($INPUT)
+      - pattern: $EL.outerHTML = $INPUT
+    message: >
+      Assigning user input to innerHTML/outerHTML enables XSS.
+      Use textContent for plain text, or sanitize with DOMPurify for HTML.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-79: Improper Neutralization of Input During Web Page Generation"]
+      category: security
+
+  # ─── SSRF ────────────────────────────────────────────────────────
+  - id: requests-user-url
+    pattern-either:
+      - pattern: requests.get($URL)
+      - pattern: requests.post($URL)
+      - pattern: urllib.request.urlopen($URL)
+      - pattern: httpx.get($URL)
+      - pattern: aiohttp.ClientSession().get($URL)
+    message: >
+      HTTP request made with a potentially user-controlled URL.
+      Validate the URL against an allowlist of trusted domains to prevent SSRF.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A10:2021 - Server-Side Request Forgery"]
+      cwe: ["CWE-918: Server-Side Request Forgery"]
+      category: security
+
+  # ─── Open Redirect ───────────────────────────────────────────────
+  - id: open-redirect-flask
+    pattern-either:
+      - pattern: redirect(request.args.get(...))
+      - pattern: redirect(request.form.get(...))
+      - pattern: redirect(request.values.get(...))
+    message: >
+      Potential open redirect: user-supplied URL used in redirect().
+      Validate the redirect target against an allowlist of trusted paths/domains.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A01:2021 - Broken Access Control"]
+      cwe: ["CWE-601: URL Redirection to Untrusted Site"]
+      category: security
+
+  # ─── Debug Mode ──────────────────────────────────────────────────
+  - id: flask-debug-mode
+    pattern-either:
+      - pattern: app.run(..., debug=True, ...)
+      - pattern: app.run(debug=True)
+      - pattern: DEBUG = True
+    message: >
+      Debug mode enabled in production exposes stack traces and the
+      Werkzeug debugger, which allows remote code execution.
+      Set debug=False and use environment variables to control this.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      owasp: ["A05:2021 - Security Misconfiguration"]
+      cwe: ["CWE-94: Improper Control of Generation of Code"]
+      category: security
+
+  # ─── PHP Vulnerabilities ─────────────────────────────────────────
+  - id: php-system-injection
+    pattern-either:
+      - pattern: system($_GET[...])
+      - pattern: system($_POST[...])
+      - pattern: exec($_GET[...])
+      - pattern: exec($_POST[...])
+      - pattern: shell_exec($_GET[...])
+      - pattern: passthru($_GET[...])
+    message: >
+      PHP command injection: user input directly passed to system/exec.
+      Validate and sanitize all inputs; use escapeshellarg().
+    severity: ERROR
+    languages: [php]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-78: Improper Neutralization of Special Elements in OS Command"]
+      category: security
+
+  - id: php-sql-injection
+    pattern-either:
+      - pattern: mysql_query("..." . $_GET[...])
+      - pattern: mysql_query("..." . $_POST[...])
+      - pattern: $wpdb->query("..." . $_GET[...])
+    message: >
+      PHP SQL injection: user input concatenated into SQL query.
+      Use PDO prepared statements or MySQLi with bind_param().
+    severity: ERROR
+    languages: [php]
+    metadata:
+      owasp: ["A03:2021 - Injection"]
+      cwe: ["CWE-89: Improper Neutralization of Special Elements in SQL Command"]
+      category: security
